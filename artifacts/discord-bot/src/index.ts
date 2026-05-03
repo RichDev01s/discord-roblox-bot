@@ -17,6 +17,9 @@ if (!TOKEN) {
   process.exit(1);
 }
 
+const COOLDOWN_MS = 60_000;
+const cooldowns = new Map<string, number>();
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -44,6 +47,19 @@ client.on("messageCreate", async (message: Message) => {
   );
 
   if (gameKey) {
+    const now = Date.now();
+    const lastUsed = cooldowns.get(message.author.id) ?? 0;
+    const remaining = COOLDOWN_MS - (now - lastUsed);
+
+    if (remaining > 0) {
+      const seconds = Math.ceil(remaining / 1000);
+      await message.reply(
+        `⏳ Espera **${seconds}s** antes de volver a usar un comando.`
+      );
+      return;
+    }
+
+    cooldowns.set(message.author.id, now);
     await handleGenServer(message, gameKey);
   }
 });

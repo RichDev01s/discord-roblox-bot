@@ -2,14 +2,10 @@
   "name": "discord-roblox-bot",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "start": "node --import tsx/esm src/index.ts",
-    "dev": "node --import tsx/esm src/index.ts"
+    "start": "node src/index.mjs"
   },
   "dependencies": {
-    "discord.js": "^14.19.3",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "discord.js": "^14.19.3"
   }
 }

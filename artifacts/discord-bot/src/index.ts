@@ -13,8 +13,12 @@ import { findEmptyServers, buildJoinLink } from "./roblox.js";
 
 const rawToken = process.env.DISCORD_TOKEN ?? "";
 const TOKEN = rawToken.trim();
-console.log(`[DEBUG] Raw length: ${rawToken.length}, Trimmed length: ${TOKEN.length}`);
-console.log(`[DEBUG] First 15 chars: "${TOKEN.slice(0, 15)}"`);
+const parts = TOKEN.split(".");
+console.log(`[DEBUG] Partes del token: ${parts.length} (debe ser 3)`);
+console.log(`[DEBUG] Longitud total: ${TOKEN.length}`);
+if (parts.length === 3) {
+  console.log(`[DEBUG] Parte 2 (timestamp): "${parts[1]}"`);
+}
 if (!TOKEN) {
   console.error("❌ DISCORD_TOKEN no está configurado.");
   process.exit(1);

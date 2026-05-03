@@ -11,14 +11,7 @@ import {
 import { GAMES } from "./config.js";
 import { findEmptyServers, buildJoinLink } from "./roblox.js";
 
-const rawToken = process.env.DISCORD_TOKEN ?? "";
-const TOKEN = rawToken.trim();
-const parts = TOKEN.split(".");
-console.log(`[DEBUG] Partes del token: ${parts.length} (debe ser 3)`);
-console.log(`[DEBUG] Longitud total: ${TOKEN.length}`);
-if (parts.length === 3) {
-  console.log(`[DEBUG] Parte 2 (timestamp): "${parts[1]}"`);
-}
+const TOKEN = process.env.DISCORD_TOKEN?.trim();
 if (!TOKEN) {
   console.error("❌ DISCORD_TOKEN no está configurado.");
   process.exit(1);

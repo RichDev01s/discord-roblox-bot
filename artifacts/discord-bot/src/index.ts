@@ -30,6 +30,9 @@ const client = new Client({
 
 client.once("clientReady", () => {
   console.log(`✅ Bot conectado como: ${client.user?.tag}`);
+  const permissions = 277025393664n;
+  const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${client.user?.id}&permissions=${permissions}&scope=bot`;
+  console.log(`\n🔗 Link de invitación:\n${inviteUrl}\n`);
 });
 
 client.on("messageCreate", async (message: Message) => {

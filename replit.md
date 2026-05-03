@@ -25,3 +25,32 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## Discord Bot (`artifacts/discord-bot`)
+
+Bot de Discord para buscar servidores de Roblox con 0 o 1 jugadores.
+
+### Comandos
+
+| Comando | Juego |
+|---|---|
+| `gen sab` | Steal a Brainrot |
+| `gen blox` | Blox Fruits |
+| `gen sailor` | Sailor Piece |
+| `gen tsunami` | Escapa del Tsunami por BRAINROTS |
+| `gen kick` | Kick a Lucky Block |
+| `gen info` | Muestra info de todos los comandos |
+
+### IDs de juegos (Roblox)
+
+Configurados en `artifacts/discord-bot/src/config.ts`:
+
+- Steal a Brainrot: `17326402341`
+- Blox Fruits: `2753915549`
+- Sailor Piece: `6284583030`
+- Escapa del Tsunami por BRAINROTS: `17311756083`
+- Kick a Lucky Block: `1819717140`
+
+### Secrets requeridos
+
+- `DISCORD_TOKEN` — Token del bot de Discord

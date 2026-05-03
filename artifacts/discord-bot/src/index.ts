@@ -4,9 +4,12 @@ import {
   EmbedBuilder,
   Message,
   ColorResolvable,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } from "discord.js";
 import { GAMES } from "./config.js";
-import { findEmptyServers, buildJoinLink, buildDeepLink } from "./roblox.js";
+import { findEmptyServers, buildJoinLink } from "./roblox.js";
 
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) {
@@ -22,7 +25,7 @@ const client = new Client({
   ],
 });
 
-client.once("ready", () => {
+client.once("clientReady", () => {
   console.log(`✅ Bot conectado como: ${client.user?.tag}`);
 });
 
@@ -49,7 +52,7 @@ async function handleInfo(message: Message): Promise<void> {
   const embed = new EmbedBuilder()
     .setTitle("📋 Comandos del Bot de Servidores Roblox")
     .setDescription(
-      "Genera links de servidores con **0 o 1 jugadores** para los siguientes juegos:"
+      "Genera links de servidores con **0 o 1 jugadores**.\nLa info se envía directo a tus **DMs** 📬"
     )
     .setColor(0x5865f2 as ColorResolvable)
     .addFields(
@@ -98,27 +101,24 @@ async function handleGenServer(
 
     const server = servers[0];
     const joinLink = buildJoinLink(game.placeId, server.id);
-    const deepLink = buildDeepLink(game.placeId, server.id);
 
     const playersText =
       server.playing === 0
-        ? "🟢 **0 jugadores** (servidor completamente vacío)"
+        ? "🟢 **0 jugadores** (completamente vacío)"
         : "🟡 **1 jugador**";
 
     const embed = new EmbedBuilder()
       .setTitle(`${game.emoji} Servidor encontrado — ${game.name}`)
-      .setDescription(
-        `¡Se encontró un servidor casi vacío! Únete ahora antes de que se llene.`
-      )
+      .setDescription("¡Únete ahora antes de que se llene!")
       .setColor(0x57f287 as ColorResolvable)
       .addFields(
         {
-          name: "👥 Jugadores actuales",
+          name: "👥 Jugadores",
           value: playersText,
           inline: true,
         },
         {
-          name: "👤 Máx. jugadores",
+          name: "👤 Máx.",
           value: `${server.maxPlayers}`,
           inline: true,
         },
@@ -126,24 +126,30 @@ async function handleGenServer(
           name: "📶 Ping",
           value: server.ping ? `${server.ping}ms` : "N/A",
           inline: true,
-        },
-        {
-          name: "🔗 Link para unirse (web)",
-          value: `[Abrir en navegador](${joinLink})`,
-          inline: false,
-        },
-        {
-          name: "🎮 Link directo (app Roblox)",
-          value: `\`${deepLink}\``,
-          inline: false,
         }
       )
       .setFooter({
-        text: `Game ID: ${game.placeId} • Server ID: ${server.id.slice(0, 8)}...`,
+        text: `Haz clic en el botón para unirte directamente`,
       })
       .setTimestamp();
 
-    await loadingMsg.edit({ content: "", embeds: [embed] });
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setLabel("🎮 Unirse al servidor")
+        .setStyle(ButtonStyle.Link)
+        .setURL(joinLink)
+    );
+
+    try {
+      await message.author.send({ embeds: [embed], components: [row] });
+      await loadingMsg.edit({
+        content: `${game.emoji} ¡Servidor encontrado! Te lo envié por DM 📬`,
+      });
+    } catch {
+      await loadingMsg.edit({
+        content: `${game.emoji} No pude enviarte un DM. Activa los mensajes directos del servidor e intenta de nuevo.`,
+      });
+    }
   } catch (error) {
     console.error(`Error buscando servidor para ${game.name}:`, error);
 

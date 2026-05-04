@@ -8,7 +8,7 @@ export interface GameConfig {
 export const GAMES: Record<string, GameConfig> = {
   sab: {
     name: "Steal a Brainrot",
-    placeId: "17326402341",
+    placeId: "109983668079237",
     command: ".gen sab",
     emoji: "🧠",
   },
@@ -20,20 +20,23 @@ export const GAMES: Record<string, GameConfig> = {
   },
   sailor: {
     name: "Sailor Piece",
-    placeId: "6284583030",
+    placeId: "77747658251236",
     command: ".gen sailor",
     emoji: "⚓",
   },
   tsunami: {
-    name: "Escapa del Tsunami por BRAINROTS",
-    placeId: "17311756083",
+    name: "Escape Tsunami For Brainrots!",
+    placeId: "131623223084840",
     command: ".gen tsunami",
     emoji: "🌊",
   },
   kick: {
     name: "Kick a Lucky Block",
-    placeId: "1819717140",
+    placeId: "89469502395769",
     command: ".gen kick",
     emoji: "🎲",
   },
 };
+
+export const ALLOWED_CHANNEL_NAMES = ["ɢᴇɴ-ꜱᴇʀᴠᴇʀ", "ᴄᴏᴍᴍᴀɴᴅꜱ"];
+export const TIMEOUT_DURATION_MS = 5 * 60 * 1000;

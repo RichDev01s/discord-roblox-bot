@@ -7,8 +7,9 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  TextChannel,
 } from "discord.js";
-import { GAMES } from "./config.js";
+import { GAMES, ALLOWED_CHANNEL_NAMES, TIMEOUT_DURATION_MS } from "./config.js";
 import { findBestServer, buildJoinLink, buildDeepLink, getGameThumbnail } from "./roblox.js";
 
 const TOKEN = process.env.DISCORD_TOKEN?.trim();
@@ -25,20 +26,60 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
   ],
 });
 
 client.once("clientReady", () => {
   console.log(`✅ Bot conectado como: ${client.user?.tag}`);
-  const permissions = 277025393664n;
+  // Include MODERATE_MEMBERS (1099511627776) permission for timeout
+  const permissions = 1376537021440n;
   const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${client.user?.id}&permissions=${permissions}&scope=bot`;
   console.log(`\n🔗 Link de invitación:\n${inviteUrl}\n`);
 });
+
+async function enforceChannelRestriction(message: Message): Promise<boolean> {
+  if (!(message.channel instanceof TextChannel)) return true;
+
+  const channelName = message.channel.name;
+  const isAllowed = ALLOWED_CHANNEL_NAMES.includes(channelName);
+
+  if (!isAllowed) {
+    const allowedMentions = ALLOWED_CHANNEL_NAMES.map((n) => `**#${n}**`).join(" o ");
+
+    try {
+      await message.member?.timeout(
+        TIMEOUT_DURATION_MS,
+        "Uso de comandos de gen fuera del canal permitido"
+      );
+      await message.reply(
+        `🚫 Los comandos \`.gen\` solo se pueden usar en ${allowedMentions}.\n⏳ Has recibido un timeout de **5 minutos** por usar un comando en el canal incorrecto.`
+      );
+    } catch {
+      await message.reply(
+        `🚫 Los comandos \`.gen\` solo se pueden usar en ${allowedMentions}.`
+      );
+    }
+
+    return false;
+  }
+
+  return true;
+}
 
 client.on("messageCreate", async (message: Message) => {
   if (message.author.bot) return;
 
   const content = message.content.trim().toLowerCase();
+
+  const isGenCommand =
+    content === ".gen info" ||
+    Object.values(GAMES).some((g) => g.command === content);
+
+  if (!isGenCommand) return;
+
+  const allowed = await enforceChannelRestriction(message);
+  if (!allowed) return;
 
   if (content === ".gen info") {
     await handleInfo(message);
@@ -135,7 +176,9 @@ async function handleGenServer(
       playersText = `🟠 **${server.playing} jugadores**`;
     }
 
-    const color = exact ? (0x57f287 as ColorResolvable) : (0xfee75c as ColorResolvable);
+    const color = exact
+      ? (0x57f287 as ColorResolvable)
+      : (0xfee75c as ColorResolvable);
 
     const description = exact
       ? "¡Únete ahora antes de que se llene!"
@@ -146,21 +189,14 @@ async function handleGenServer(
       .setDescription(description)
       .setColor(color)
       .addFields(
-        {
-          name: "🔗 Link web (clickeable)",
-          value: joinLink,
-          inline: false,
-        },
+        { name: "🔗 Link web (clickeable)", value: joinLink, inline: false },
         {
           name: "📱 Deeplink Roblox (toca para copiar)",
           value: `\`${deepLink}\``,
           inline: false,
         },
-        {
-          name: "👥 Jugadores",
-          value: playersText,
-          inline: true,
-        },
+        { name: "🆔 Job ID", value: `\`${server.id}\``, inline: false },
+        { name: "👥 Jugadores", value: playersText, inline: true },
         {
           name: "🏪 Slots libres",
           value: `${slotsLibres} de ${server.maxPlayers}`,
@@ -171,13 +207,11 @@ async function handleGenServer(
           value: server.ping ? `${server.ping}ms` : "N/A",
           inline: true,
         },
-        {
-          name: "🎮 Juego",
-          value: game.name,
-          inline: false,
-        }
+        { name: "🎮 Juego", value: game.name, inline: false }
       )
-      .setFooter({ text: "Pedido / Encontrado: 0 pedido → " + server.playing + " encontrado" })
+      .setFooter({
+        text: `Pedido / Encontrado: 0 pedido → ${server.playing} encontrado`,
+      })
       .setTimestamp();
 
     if (thumbnail) {

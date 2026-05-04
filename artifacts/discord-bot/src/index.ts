@@ -40,7 +40,7 @@ client.on("messageCreate", async (message: Message) => {
 
   const content = message.content.trim().toLowerCase();
 
-  if (content === "gen info") {
+  if (content === ".gen info") {
     await handleInfo(message);
     return;
   }

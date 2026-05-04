@@ -1,7 +1,10 @@
 export const GAMES = {
-  sab: { name: "Steal a Brainrot", placeId: "17326402341", command: ".gen sab", emoji: "🧠" },
-  blox: { name: "Blox Fruits", placeId: "2753915549", command: ".gen blox", emoji: "🍎" },
-  sailor: { name: "Sailor Piece", placeId: "6284583030", command: ".gen sailor", emoji: "⚓" },
-  tsunami: { name: "Escapa del Tsunami por BRAINROTS", placeId: "17311756083", command: ".gen tsunami", emoji: "🌊" },
-  kick: { name: "Kick a Lucky Block", placeId: "1819717140", command: ".gen kick", emoji: "🎲" },
+  sab:     { name: "Steal a Brainrot",            placeId: "109983668079237", command: ".gen sab",     emoji: "🧠" },
+  blox:    { name: "Blox Fruits",                  placeId: "2753915549",      command: ".gen blox",    emoji: "🍎" },
+  sailor:  { name: "Sailor Piece",                 placeId: "77747658251236",  command: ".gen sailor",  emoji: "⚓" },
+  tsunami: { name: "Escape Tsunami For Brainrots!", placeId: "131623223084840", command: ".gen tsunami", emoji: "🌊" },
+  kick:    { name: "Kick a Lucky Block",            placeId: "89469502395769",  command: ".gen kick",    emoji: "🎲" },
 };
+
+export const ALLOWED_CHANNEL_NAMES = ["ɢᴇɴ-ꜱᴇʀᴠᴇʀ"];
+export const TIMEOUT_DURATION_MS = 5 * 60 * 1000;

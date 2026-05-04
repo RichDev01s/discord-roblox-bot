@@ -9,7 +9,7 @@ import {
   ButtonStyle,
 } from "discord.js";
 import { GAMES } from "./config.js";
-import { findEmptyServers, buildJoinLink } from "./roblox.js";
+import { findBestServer, buildJoinLink, buildDeepLink, getGameThumbnail } from "./roblox.js";
 
 const TOKEN = process.env.DISCORD_TOKEN?.trim();
 if (!TOKEN) {
@@ -82,7 +82,7 @@ async function handleInfo(message: Message): Promise<void> {
       }))
     )
     .addFields({
-      name: "ℹ️ `gen info`",
+      name: "ℹ️ `.gen info`",
       value: "Muestra este mensaje de ayuda",
       inline: true,
     })
@@ -103,13 +103,16 @@ async function handleGenServer(
   );
 
   try {
-    const servers = await findEmptyServers(game.placeId, 1);
+    const [result, thumbnail] = await Promise.all([
+      findBestServer(game.placeId, 1),
+      getGameThumbnail(game.placeId),
+    ]);
 
-    if (servers.length === 0) {
+    if (!result) {
       const embed = new EmbedBuilder()
         .setTitle(`${game.emoji} ${game.name}`)
         .setDescription(
-          "❌ No se encontraron servidores con 0 o 1 jugadores en este momento.\n\nIntenta de nuevo en unos segundos."
+          "❌ No se encontraron servidores disponibles en este momento.\n\nIntenta de nuevo en unos segundos."
         )
         .setColor(0xed4245 as ColorResolvable)
         .setTimestamp();
@@ -118,39 +121,68 @@ async function handleGenServer(
       return;
     }
 
-    const server = servers[0];
+    const { server, exact } = result;
     const joinLink = buildJoinLink(game.placeId, server.id);
+    const deepLink = buildDeepLink(game.placeId, server.id);
+    const slotsLibres = server.maxPlayers - server.playing;
 
-    const playersText =
-      server.playing === 0
-        ? "🟢 **0 jugadores** (completamente vacío)"
-        : "🟡 **1 jugador**";
+    let playersText: string;
+    if (server.playing === 0) {
+      playersText = "🟢 **0 jugadores** (completamente vacío)";
+    } else if (server.playing === 1) {
+      playersText = "🟡 **1 jugador**";
+    } else {
+      playersText = `🟠 **${server.playing} jugadores**`;
+    }
+
+    const color = exact ? (0x57f287 as ColorResolvable) : (0xfee75c as ColorResolvable);
+
+    const description = exact
+      ? "¡Únete ahora antes de que se llene!"
+      : `⚠️ No se encontró exacto. Pediste **0**, el más cercano tiene **${server.playing} jugador(es)**.\nToca el link web para entrar, o copia el deeplink si tienes Roblox instalado.`;
 
     const embed = new EmbedBuilder()
-      .setTitle(`${game.emoji} Servidor encontrado — ${game.name}`)
-      .setDescription("¡Únete ahora antes de que se llene!")
-      .setColor(0x57f287 as ColorResolvable)
+      .setTitle(`${game.emoji} Tu servidor — ${game.name}`)
+      .setDescription(description)
+      .setColor(color)
       .addFields(
+        {
+          name: "🔗 Link web (clickeable)",
+          value: joinLink,
+          inline: false,
+        },
+        {
+          name: "📱 Deeplink Roblox (toca para copiar)",
+          value: `\`${deepLink}\``,
+          inline: false,
+        },
         {
           name: "👥 Jugadores",
           value: playersText,
           inline: true,
         },
         {
-          name: "👤 Máx.",
-          value: `${server.maxPlayers}`,
+          name: "🏪 Slots libres",
+          value: `${slotsLibres} de ${server.maxPlayers}`,
           inline: true,
         },
         {
           name: "📶 Ping",
           value: server.ping ? `${server.ping}ms` : "N/A",
           inline: true,
+        },
+        {
+          name: "🎮 Juego",
+          value: game.name,
+          inline: false,
         }
       )
-      .setFooter({
-        text: `Haz clic en el botón para unirte directamente`,
-      })
+      .setFooter({ text: "Pedido / Encontrado: 0 pedido → " + server.playing + " encontrado" })
       .setTimestamp();
+
+    if (thumbnail) {
+      embed.setImage(thumbnail);
+    }
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()

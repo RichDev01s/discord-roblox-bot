@@ -10,7 +10,12 @@ import {
   TextChannel,
 } from "discord.js";
 import { GAMES, ALLOWED_CHANNEL_NAMES, TIMEOUT_DURATION_MS } from "./config.js";
-import { findBestServer, buildJoinLink, buildDeepLink, getGameThumbnail } from "./roblox.js";
+import {
+  findBestServer,
+  buildJoinLink,
+  buildDeepLink,
+  getGameThumbnail,
+} from "./roblox.js";
 
 const TOKEN = process.env.DISCORD_TOKEN?.trim();
 if (!TOKEN) {
@@ -20,6 +25,12 @@ if (!TOKEN) {
 
 const COOLDOWN_MS = 60_000;
 const cooldowns = new Map<string, number>();
+
+// Prevents duplicate processing when a user spams the same command rapidly
+const inProgress = new Set<string>();
+
+// Tracks the last bot reply per user so we can delete it before the next result
+const lastBotReply = new Map<string, Message>();
 
 const client = new Client({
   intents: [
@@ -32,40 +43,10 @@ const client = new Client({
 
 client.once("clientReady", () => {
   console.log(`✅ Bot conectado como: ${client.user?.tag}`);
-  // Include MODERATE_MEMBERS (1099511627776) permission for timeout
   const permissions = 1376537021440n;
   const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${client.user?.id}&permissions=${permissions}&scope=bot`;
   console.log(`\n🔗 Link de invitación:\n${inviteUrl}\n`);
 });
-
-async function enforceChannelRestriction(message: Message): Promise<boolean> {
-  if (!(message.channel instanceof TextChannel)) return true;
-
-  const channelName = message.channel.name;
-  const isAllowed = ALLOWED_CHANNEL_NAMES.includes(channelName);
-
-  if (!isAllowed) {
-    const allowedMentions = ALLOWED_CHANNEL_NAMES.map((n) => `**#${n}**`).join(" o ");
-
-    try {
-      await message.member?.timeout(
-        TIMEOUT_DURATION_MS,
-        "Uso de comandos de gen fuera del canal permitido"
-      );
-      await message.reply(
-        `🚫 Los comandos \`.gen\` solo se pueden usar en ${allowedMentions}.\n⏳ Has recibido un timeout de **5 minutos** por usar un comando en el canal incorrecto.`
-      );
-    } catch {
-      await message.reply(
-        `🚫 Los comandos \`.gen\` solo se pueden usar en ${allowedMentions}.`
-      );
-    }
-
-    return false;
-  }
-
-  return true;
-}
 
 client.on("messageCreate", async (message: Message) => {
   if (message.author.bot) return;
@@ -78,8 +59,27 @@ client.on("messageCreate", async (message: Message) => {
 
   if (!isGenCommand) return;
 
-  const allowed = await enforceChannelRestriction(message);
-  if (!allowed) return;
+  // ── Channel restriction (synchronous check, no race condition) ──────────
+  if (message.channel instanceof TextChannel) {
+    const channelName = message.channel.name;
+    if (!ALLOWED_CHANNEL_NAMES.includes(channelName)) {
+      const allowedMentions = ALLOWED_CHANNEL_NAMES.map((n) => `**#${n}**`).join(" o ");
+      try {
+        await message.member?.timeout(
+          TIMEOUT_DURATION_MS,
+          "Uso de comandos de gen fuera del canal permitido"
+        );
+        await message.reply(
+          `🚫 Los comandos \`.gen\` solo se pueden usar en ${allowedMentions}.\n⏳ Has recibido un timeout de **5 minutos** por usar un comando en el canal incorrecto.`
+        );
+      } catch {
+        await message.reply(
+          `🚫 Los comandos \`.gen\` solo se pueden usar en ${allowedMentions}.`
+        );
+      }
+      return;
+    }
+  }
 
   if (content === ".gen info") {
     await handleInfo(message);
@@ -90,21 +90,32 @@ client.on("messageCreate", async (message: Message) => {
     (key) => content === GAMES[key].command
   );
 
-  if (gameKey) {
-    const now = Date.now();
-    const lastUsed = cooldowns.get(message.author.id) ?? 0;
-    const remaining = COOLDOWN_MS - (now - lastUsed);
+  if (!gameKey) return;
 
-    if (remaining > 0) {
-      const seconds = Math.ceil(remaining / 1000);
-      await message.reply(
-        `⏳ Espera **${seconds}s** antes de volver a usar un comando.`
-      );
-      return;
-    }
+  // ── Duplicate-processing lock (must be synchronous, before any await) ───
+  if (inProgress.has(message.author.id)) return;
 
-    cooldowns.set(message.author.id, now);
+  // ── Cooldown check (synchronous, before any await) ──────────────────────
+  const now = Date.now();
+  const lastUsed = cooldowns.get(message.author.id) ?? 0;
+  const remaining = COOLDOWN_MS - (now - lastUsed);
+
+  if (remaining > 0) {
+    const seconds = Math.ceil(remaining / 1000);
+    await message.reply(
+      `⏳ Espera **${seconds}s** antes de volver a usar un comando.`
+    );
+    return;
+  }
+
+  // Lock + set cooldown together before any async work
+  inProgress.add(message.author.id);
+  cooldowns.set(message.author.id, now);
+
+  try {
     await handleGenServer(message, gameKey);
+  } finally {
+    inProgress.delete(message.author.id);
   }
 });
 
@@ -138,10 +149,25 @@ async function handleGenServer(
   gameKey: string
 ): Promise<void> {
   const game = GAMES[gameKey];
+  const userId = message.author.id;
+
+  // Delete the previous bot reply for this user (if any) to keep chat clean
+  const previousReply = lastBotReply.get(userId);
+  if (previousReply) {
+    try {
+      await previousReply.delete();
+    } catch {
+      // Already deleted or no permission — ignore
+    }
+    lastBotReply.delete(userId);
+  }
 
   const loadingMsg = await message.reply(
     `${game.emoji} Buscando servidor vacío en **${game.name}**...`
   );
+
+  // Track this loading message as the current bot reply for this user
+  lastBotReply.set(userId, loadingMsg);
 
   try {
     const [result, thumbnail] = await Promise.all([
@@ -229,6 +255,7 @@ async function handleGenServer(
       await message.author.send({ embeds: [embed], components: [row] });
       await loadingMsg.edit({
         content: `${game.emoji} ¡Servidor encontrado! Te lo envié por DM 📬`,
+        embeds: [],
       });
     } catch {
       await loadingMsg.edit({

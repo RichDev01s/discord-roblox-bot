@@ -38,5 +38,5 @@ export const GAMES: Record<string, GameConfig> = {
   },
 };
 
-export const ALLOWED_CHANNEL_NAMES = ["ɢᴇɴ-ꜱᴇʀᴠᴇʀ", "ᴄᴏᴍᴍᴀɴᴅꜱ"];
+export const ALLOWED_CHANNEL_NAMES = ["ɢᴇɴ-ꜱᴇʀᴠᴇʀ"];
 export const TIMEOUT_DURATION_MS = 5 * 60 * 1000;

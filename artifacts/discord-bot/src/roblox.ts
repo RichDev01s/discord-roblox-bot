@@ -11,26 +11,64 @@ interface RobloxServerListResponse {
   nextPageCursor?: string;
 }
 
-export async function findEmptyServers(
+const MAX_PAGES = 5;
+const RETRY_DELAY_MS = 1500;
+
+async function fetchPage(
   placeId: string,
-  maxPlayers: number = 1
-): Promise<RobloxServer[]> {
-  const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100`;
+  cursor?: string
+): Promise<RobloxServerListResponse> {
+  const url =
+    `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100` +
+    (cursor ? `&cursor=${cursor}` : "");
 
   const res = await fetch(url, {
     headers: {
-      "Accept": "application/json",
+      Accept: "application/json",
       "User-Agent": "Mozilla/5.0",
     },
   });
+
+  if (res.status === 429) {
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    const retry = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+    if (!retry.ok) {
+      throw new Error(`Roblox API error: ${retry.status} ${retry.statusText}`);
+    }
+    return (await retry.json()) as RobloxServerListResponse;
+  }
 
   if (!res.ok) {
     throw new Error(`Roblox API error: ${res.status} ${res.statusText}`);
   }
 
-  const body = (await res.json()) as RobloxServerListResponse;
+  return (await res.json()) as RobloxServerListResponse;
+}
 
-  return body.data.filter((s) => s.playing <= maxPlayers);
+export async function findEmptyServers(
+  placeId: string,
+  maxPlayers: number = 1
+): Promise<RobloxServer[]> {
+  let cursor: string | undefined;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const body = await fetchPage(placeId, cursor);
+    const matches = body.data.filter((s) => s.playing <= maxPlayers);
+
+    if (matches.length > 0) {
+      return matches;
+    }
+
+    if (!body.nextPageCursor) break;
+    cursor = body.nextPageCursor;
+  }
+
+  return [];
 }
 
 export function buildJoinLink(placeId: string, serverId: string): string {

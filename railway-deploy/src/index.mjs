@@ -29,7 +29,7 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   const content = message.content.trim().toLowerCase();
 
-  if (content === "gen info") { await handleInfo(message); return; }
+  if (content === ".gen info") { await handleInfo(message); return; }
 
   const gameKey = Object.keys(GAMES).find(k => content === GAMES[k].command);
   if (!gameKey) return;

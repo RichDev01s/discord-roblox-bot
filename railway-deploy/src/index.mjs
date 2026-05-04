@@ -16,6 +16,9 @@ if (!TOKEN) { console.error("❌ DISCORD_TOKEN no configurado."); process.exit(1
 
 const COOLDOWN_MS = 60_000;
 const cooldowns = new Map();
+const GEN_SERVER_CHANNEL = "ɢᴇɴ-ꜱᴇʀᴠᴇʀ";
+const SAFE_CHANNELS = ["ɢᴇɴ-ꜱᴇʀᴠᴇʀ", "ᴄᴏᴍᴍᴀɴᴅꜱ"];
+const TIMEOUT_DURATION_MS = 5 * 60 * 1000;
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
@@ -27,7 +30,29 @@ client.once("clientReady", () => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
+  if (!message.guild) return;
+
   const content = message.content.trim().toLowerCase();
+
+  const isCommand =
+    content === ".gen info" ||
+    Object.values(GAMES).some((g) => content === g.command);
+
+  if (!isCommand) return;
+
+  const channelName = message.channel.name;
+
+  if (!SAFE_CHANNELS.includes(channelName)) {
+    try {
+      await message.member?.timeout(TIMEOUT_DURATION_MS, "Uso de comandos fuera del canal permitido");
+      const genChannel = message.guild.channels.cache.find((c) => c.name === GEN_SERVER_CHANNEL);
+      const channelMention = genChannel ? `<#${genChannel.id}>` : `#ɢᴇɴ-ꜱᴇʀᴠᴇʀ`;
+      await message.reply(`🔇 <@${message.author.id}> Los comandos solo se pueden usar en ${channelMention}. Has recibido un **timeout de 5 minutos**.`);
+    } catch { }
+    return;
+  }
+
+  if (channelName !== GEN_SERVER_CHANNEL) return;
 
   if (content === ".gen info") { await handleInfo(message); return; }
 

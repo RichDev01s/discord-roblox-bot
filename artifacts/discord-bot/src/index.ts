@@ -26,9 +26,6 @@ if (!TOKEN) {
 const COOLDOWN_MS = 60_000;
 const cooldowns = new Map<string, number>();
 
-// Prevents duplicate processing when a user spams the same command rapidly
-const inProgress = new Set<string>();
-
 // Tracks the last bot reply per user so we can delete it before the next result
 const lastBotReply = new Map<string, Message>();
 
@@ -43,7 +40,8 @@ const client = new Client({
 
 client.once("clientReady", () => {
   console.log(`✅ Bot conectado como: ${client.user?.tag}`);
-  const permissions = 1376537021440n;
+  // Permissions include MANAGE_MESSAGES (8192) for message deletion dedup
+  const permissions = 1376537029632n;
   const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${client.user?.id}&permissions=${permissions}&scope=bot`;
   console.log(`\n🔗 Link de invitación:\n${inviteUrl}\n`);
 });
@@ -59,7 +57,7 @@ client.on("messageCreate", async (message: Message) => {
 
   if (!isGenCommand) return;
 
-  // ── Channel restriction (synchronous check, no race condition) ──────────
+  // ── Channel restriction ──────────────────────────────────────────────────
   if (message.channel instanceof TextChannel) {
     const channelName = message.channel.name;
     if (!ALLOWED_CHANNEL_NAMES.includes(channelName)) {
@@ -70,7 +68,7 @@ client.on("messageCreate", async (message: Message) => {
           "Uso de comandos de gen fuera del canal permitido"
         );
         await message.reply(
-          `🚫 Los comandos \`.gen\` solo se pueden usar en ${allowedMentions}.\n⏳ Has recibido un timeout de **5 minutos** por usar un comando en el canal incorrecto.`
+          `🚫 Los comandos \`.gen\` solo se pueden usar en ${allowedMentions}.\n⏳ Has recibido un timeout de **5 minutos**.`
         );
       } catch {
         await message.reply(
@@ -79,6 +77,16 @@ client.on("messageCreate", async (message: Message) => {
       }
       return;
     }
+  }
+
+  // ── Cross-instance deduplication ─────────────────────────────────────────
+  // Only one bot instance can delete this message — the first one wins.
+  // Any other running instance (e.g. Railway) will fail here and skip.
+  try {
+    await message.delete();
+  } catch {
+    // Another bot instance already deleted this message — skip processing.
+    return;
   }
 
   if (content === ".gen info") {
@@ -92,31 +100,22 @@ client.on("messageCreate", async (message: Message) => {
 
   if (!gameKey) return;
 
-  // ── Duplicate-processing lock (must be synchronous, before any await) ───
-  if (inProgress.has(message.author.id)) return;
-
-  // ── Cooldown check (synchronous, before any await) ──────────────────────
+  // ── Cooldown check ───────────────────────────────────────────────────────
   const now = Date.now();
   const lastUsed = cooldowns.get(message.author.id) ?? 0;
   const remaining = COOLDOWN_MS - (now - lastUsed);
 
   if (remaining > 0) {
     const seconds = Math.ceil(remaining / 1000);
-    await message.reply(
-      `⏳ Espera **${seconds}s** antes de volver a usar un comando.`
+    const cooldownMsg = await message.channel.send(
+      `<@${message.author.id}> ⏳ Espera **${seconds}s** antes de volver a usar un comando.`
     );
+    setTimeout(() => cooldownMsg.delete().catch(() => {}), 5000);
     return;
   }
 
-  // Lock + set cooldown together before any async work
-  inProgress.add(message.author.id);
   cooldowns.set(message.author.id, now);
-
-  try {
-    await handleGenServer(message, gameKey);
-  } finally {
-    inProgress.delete(message.author.id);
-  }
+  await handleGenServer(message, gameKey);
 });
 
 async function handleInfo(message: Message): Promise<void> {
@@ -141,7 +140,7 @@ async function handleInfo(message: Message): Promise<void> {
     .setFooter({ text: "Los servidores se buscan en tiempo real desde Roblox" })
     .setTimestamp();
 
-  await message.reply({ embeds: [embed] });
+  await message.channel.send({ embeds: [embed] });
 }
 
 async function handleGenServer(
@@ -162,11 +161,10 @@ async function handleGenServer(
     lastBotReply.delete(userId);
   }
 
-  const loadingMsg = await message.reply(
-    `${game.emoji} Buscando servidor vacío en **${game.name}**...`
+  const loadingMsg = await message.channel.send(
+    `<@${message.author.id}> ${game.emoji} Buscando servidor vacío en **${game.name}**...`
   );
 
-  // Track this loading message as the current bot reply for this user
   lastBotReply.set(userId, loadingMsg);
 
   try {
@@ -254,12 +252,12 @@ async function handleGenServer(
     try {
       await message.author.send({ embeds: [embed], components: [row] });
       await loadingMsg.edit({
-        content: `${game.emoji} ¡Servidor encontrado! Te lo envié por DM 📬`,
+        content: `<@${message.author.id}> ${game.emoji} ¡Servidor encontrado! Te lo envié por DM 📬`,
         embeds: [],
       });
     } catch {
       await loadingMsg.edit({
-        content: `${game.emoji} No pude enviarte un DM. Activa los mensajes directos del servidor e intenta de nuevo.`,
+        content: `<@${message.author.id}> ${game.emoji} No pude enviarte un DM. Activa los mensajes directos del servidor e intenta de nuevo.`,
       });
     }
   } catch (error) {

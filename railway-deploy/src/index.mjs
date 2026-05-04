@@ -201,7 +201,7 @@ async function handleGenServer(message, gameKey) {
         { name: "📶 Ping", value: server.ping ? `${server.ping}ms` : "N/A", inline: true },
         { name: "🎮 Juego", value: game.name, inline: false }
       )
-      .setFooter({ text: `Pedido / Encontrado: 0 pedido → ${server.playing} encontrado` })
+      .setFooter({ text: `By: Rich Scripts💸 | https://discord.gg/vpD8cBjHFP` })
       .setTimestamp();
 
     if (thumbnail) embed.setImage(thumbnail);

@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-20", "web", "bash"]
 
 [deployment]
 router = "application"
@@ -32,7 +32,7 @@ args = "pnpm --filter @workspace/discord-bot run dev"
 outputType = "console"
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]
@@ -50,3 +50,6 @@ externalPort = 8081
 [userenv]
 
 [userenv.shared]
+
+[nix]
+channel = "stable-25_05"

@@ -1,80 +1,76 @@
-export async function findBestServer(placeId, targetPlayers = 0) {
-  const headers = {
-    "Accept": "application/json",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+const MAX_PAGES = 5;
+const RETRY_DELAY_MS = 1500;
+
+async function fetchPage(placeId, cursor) {
+  const url =
+    `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100` +
+    (cursor ? `&cursor=${cursor}` : "");
+
+  const attempt = async () => {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
+    });
+    if (res.status === 429) return null;
+    if (!res.ok) throw new Error(`Roblox API error: ${res.status} ${res.statusText}`);
+    return res.json();
   };
 
+  let result = await attempt();
+  if (!result) {
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    result = await attempt();
+    if (!result) throw new Error("Roblox API rate limited (429). Intenta de nuevo.");
+  }
+  return result;
+}
+
+export async function findBestServer(placeId, maxPlayers = 1) {
   let cursor;
-  let bestServer = null;
-  let pages = 0;
+  let bestSoFar = null;
 
-  while (pages < 5) {
-    const url =
-      `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Asc&limit=100` +
-      (cursor ? `&cursor=${cursor}` : "");
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const body = await fetchPage(placeId, cursor);
 
-    const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error(`Roblox API error: ${res.status} ${res.statusText}`);
-
-    const body = await res.json();
     if (!body.data || body.data.length === 0) break;
 
-    for (const s of body.data) {
-      if (s.playing === targetPlayers) {
-        return { server: s, requestedPlayers: targetPlayers, foundPlayers: s.playing, exactMatch: true };
-      }
-      if (s.playing <= targetPlayers + 1 && (bestServer === null || s.playing < bestServer.playing)) {
-        bestServer = s;
-      }
+    const exact = body.data.find((s) => s.playing <= maxPlayers);
+    if (exact) return { server: exact, exact: true, requested: maxPlayers };
+
+    const pageBest = body.data.reduce((a, b) => (a.playing < b.playing ? a : b));
+    if (!bestSoFar || pageBest.playing < bestSoFar.playing) {
+      bestSoFar = pageBest;
     }
 
+    if (body.data[0].playing >= (bestSoFar?.playing ?? Infinity)) break;
     if (!body.nextPageCursor) break;
     cursor = body.nextPageCursor;
-    pages++;
   }
 
-  if (bestServer) {
-    return {
-      server: bestServer,
-      requestedPlayers: targetPlayers,
-      foundPlayers: bestServer.playing,
-      exactMatch: bestServer.playing === targetPlayers,
-    };
-  }
-
+  if (bestSoFar) return { server: bestSoFar, exact: false, requested: maxPlayers };
   return null;
 }
 
-export function buildWebLink(placeId, serverId) {
-  return `https://www.roblox.com/games/${placeId}?gameInstanceId=${serverId}`;
+export async function getGameThumbnail(placeId) {
+  try {
+    const uRes = await fetch(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`);
+    if (!uRes.ok) return null;
+    const { universeId } = await uRes.json();
+
+    const tRes = await fetch(
+      `https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=512x512&format=Png&isCircular=false`
+    );
+    if (!tRes.ok) return null;
+    const tBody = await tRes.json();
+    return tBody.data?.[0]?.imageUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function buildJoinLink(placeId, serverId) {
+  return `https://www.roblox.com/games/start?placeId=${placeId}&gameInstanceId=${serverId}`;
 }
 
 export function buildDeepLink(placeId, serverId) {
   return `roblox://experiences/start?placeId=${placeId}&gameInstanceId=${serverId}`;
-}
-
-export async function fetchGameThumbnail(placeId) {
-  try {
-    const univRes = await fetch(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`, {
-      headers: { "Accept": "application/json" },
-    });
-    if (!univRes.ok) return { icon: null, image: null };
-
-    const { universeId } = await univRes.json();
-
-    const [iconRes, imgRes] = await Promise.all([
-      fetch(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false`),
-      fetch(`https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${universeId}&thumbnailType=GameThumbnail&size=768x432&format=Png&countPerUniverse=1`),
-    ]);
-
-    const iconData = iconRes.ok ? await iconRes.json() : null;
-    const imgData = imgRes.ok ? await imgRes.json() : null;
-
-    return {
-      icon: iconData?.data?.[0]?.imageUrl ?? null,
-      image: imgData?.data?.[0]?.thumbnails?.[0]?.imageUrl ?? null,
-    };
-  } catch {
-    return { icon: null, image: null };
-  }
 }

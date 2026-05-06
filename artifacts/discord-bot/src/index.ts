@@ -40,7 +40,7 @@ const client = new Client({
 
 const WELCOME_CHANNEL_NAME = "ᴀɪʀᴘᴏʀᴛ-✈️";
 const WELCOME_IMAGE_URL =
-  "https://raw.githubusercontent.com/RichDev01s/discord-roblox-bot/main/railway-deploy/assets/welcome-bg.jpg";
+  "https://raw.githubusercontent.com/RichDev01s/discord-roblox-bot/main/railway-deploy/assets/welcome-hearts.jpg";
 
 client.once("clientReady", () => {
   console.log(`✅ Bot conectado como: ${client.user?.tag}`);

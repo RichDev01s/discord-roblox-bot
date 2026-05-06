@@ -8,7 +8,7 @@ import {
   TextChannel,
 } from "discord.js";
 import { createServer } from "http";
-import { GAMES, ALLOWED_CHANNEL_NAMES, TIMEOUT_DURATION_MS } from "./config.mjs";
+import { GAMES, ALLOWED_CHANNEL_NAMES, ALLOWED_CHANNEL_IDS, TIMEOUT_DURATION_MS } from "./config.mjs";
 import { findBestServer, buildJoinLink, buildDeepLink, getGameThumbnail } from "./roblox.mjs";
 
 // ── Bot readiness state (used by health endpoint) ────────────────────────────
@@ -167,36 +167,6 @@ process.on("unhandledRejection", async (reason) => {
   process.exit(1);
 });
 
-const WELCOME_CHANNEL_NAME = "ᴀɪʀᴘᴏʀᴛ-✈️";
-const WELCOME_IMAGE_URL =
-  "https://raw.githubusercontent.com/RichDev01s/discord-roblox-bot/main/railway-deploy/assets/welcome-bg.jpg";
-
-client.on("guildMemberAdd", async (member) => {
-  const channel = member.guild.channels.cache.find(
-    (ch) => ch.name === WELCOME_CHANNEL_NAME && ch.isTextBased()
-  );
-
-  if (!channel) return;
-
-  const memberCount = member.guild.memberCount;
-  const reglasChannel = member.guild.channels.cache.find((ch) =>
-    ch.name.includes("reglas")
-  );
-  const reglasText = reglasChannel ? `<#${reglasChannel.id}>` : "**#reglas**";
-
-  const embed = new EmbedBuilder()
-    .setDescription(
-      `¡Qué bueno que llegaste! 🎉\n\n🔗 Ya somos **${memberCount}**, y ahora eres parte.\n📖 Recuerda leer ${reglasText}.\n🚀 Ponte cómodo, explora y hazte notar.\n¡Esto se pone mejor contigo aquí!`
-    )
-    .setColor(0x2ecc71)
-    .setImage(WELCOME_IMAGE_URL);
-
-  await channel.send({
-    content: `¡<@${member.id}> se ha unido a ✨ SkyLine | SAB, SAILOR PIECE & BLOX FRUITS!`,
-    embeds: [embed],
-  });
-});
-
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
@@ -210,9 +180,18 @@ client.on("messageCreate", async (message) => {
 
   // ── Channel restriction ──────────────────────────────────────────────────
   if (message.channel instanceof TextChannel || message.channel.name) {
+    const channelId   = message.channel.id;
     const channelName = message.channel.name;
-    if (!ALLOWED_CHANNEL_NAMES.includes(channelName)) {
-      const allowedMentions = ALLOWED_CHANNEL_NAMES.map((n) => `**#${n}**`).join(" o ");
+
+    // ID-based check takes precedence when ALLOWED_CHANNEL_IDS is configured.
+    const isAllowed = ALLOWED_CHANNEL_IDS.length > 0
+      ? ALLOWED_CHANNEL_IDS.includes(channelId)
+      : ALLOWED_CHANNEL_NAMES.includes(channelName);
+
+    if (!isAllowed) {
+      const allowedMentions = ALLOWED_CHANNEL_IDS.length > 0
+        ? ALLOWED_CHANNEL_IDS.map((id) => `<#${id}>`).join(" o ")
+        : ALLOWED_CHANNEL_NAMES.map((n) => `**#${n}**`).join(" o ");
       try {
         await message.member?.timeout(
           TIMEOUT_DURATION_MS,

@@ -67,7 +67,7 @@ client.on("guildMemberAdd", async (member) => {
     .setDescription(
       `¡Qué bueno que llegaste! 🎉\n\n🔗 Ya somos **${memberCount}**, y ahora eres parte.\n📖 Recuerda leer ${reglasText}.\n🚀 Ponte cómodo, explora y hazte notar.\n¡Esto se pone mejor contigo aquí!`
     )
-    .setColor(0x2ecc71 as ColorResolvable)
+    .setColor(0xe74c3c as ColorResolvable)
     .setImage(WELCOME_IMAGE_URL);
 
   await channel.send({

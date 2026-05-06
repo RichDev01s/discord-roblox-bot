@@ -42,12 +42,70 @@ const WELCOME_CHANNEL_NAME = "ᴀɪʀᴘᴏʀᴛ-✈️";
 const WELCOME_IMAGE_URL =
   "https://raw.githubusercontent.com/RichDev01s/discord-roblox-bot/main/railway-deploy/assets/welcome-hearts.jpg";
 
+// ── Reconnect watchdog ────────────────────────────────────────────────────────
+// If a shard disconnects and doesn't come back within 3 minutes, force
+// process.exit(1) so Replit restarts the workflow automatically.
+const RECONNECT_TIMEOUT_MS = 3 * 60 * 1000;
+const shardWatchdogs = new Map<number, ReturnType<typeof setTimeout>>();
+
+function startReconnectWatchdog(shardId: number) {
+  clearReconnectWatchdog(shardId);
+  const timer = setTimeout(() => {
+    shardWatchdogs.delete(shardId);
+    console.error(`💀 Shard ${shardId} no reconectó en ${RECONNECT_TIMEOUT_MS / 1000}s — reiniciando proceso.`);
+    process.exit(1);
+  }, RECONNECT_TIMEOUT_MS);
+  shardWatchdogs.set(shardId, timer);
+}
+
+function clearReconnectWatchdog(shardId: number) {
+  const timer = shardWatchdogs.get(shardId);
+  if (timer) {
+    clearTimeout(timer);
+    shardWatchdogs.delete(shardId);
+  }
+}
+
 client.once("clientReady", () => {
   console.log(`✅ Bot conectado como: ${client.user?.tag}`);
-  // Permissions include MANAGE_MESSAGES (8192) for message deletion dedup
   const permissions = 1376537029632n;
   const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${client.user?.id}&permissions=${permissions}&scope=bot`;
   console.log(`\n🔗 Link de invitación:\n${inviteUrl}\n`);
+});
+
+client.on("shardDisconnect", (event, shardId) => {
+  console.warn(`⚠️ Shard ${shardId} desconectado (code ${event.code}). Watchdog iniciado.`);
+  startReconnectWatchdog(shardId);
+});
+
+client.on("shardReconnecting", (shardId) => {
+  console.log(`🔄 Shard ${shardId} reconectando...`);
+});
+
+client.on("shardReady", (shardId) => {
+  clearReconnectWatchdog(shardId);
+  console.log(`✅ Shard ${shardId} listo.`);
+});
+
+client.on("shardResume", (shardId, replayedEvents) => {
+  clearReconnectWatchdog(shardId);
+  console.log(`✅ Shard ${shardId} resumido (${replayedEvents} eventos).`);
+});
+
+client.on("shardError", (error, shardId) => {
+  console.error(`❌ Shard ${shardId} error:`, error.message);
+});
+
+// ── Global error handlers → exit(1) forces Replit to restart the workflow ─────
+process.on("uncaughtException", (err) => {
+  console.error("💥 uncaughtException:", err);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  console.error("💥 unhandledRejection:", msg);
+  process.exit(1);
 });
 
 client.on("guildMemberAdd", async (member) => {

@@ -11,11 +11,66 @@ import { createServer } from "http";
 import { GAMES, ALLOWED_CHANNEL_NAMES, TIMEOUT_DURATION_MS } from "./config.mjs";
 import { findBestServer, buildJoinLink, buildDeepLink, getGameThumbnail } from "./roblox.mjs";
 
-// ── Health check server (required by Railway) ────────────────────────────────
+// ── Bot readiness state (used by health endpoint) ────────────────────────────
+// botReady is a single boolean (conservative): any shard disconnect marks the
+// whole bot as unavailable. For a single-shard bot (no ShardingManager) this
+// is correct. In a multi-shard setup it would report global unhealthy on a
+// single-shard disruption, which is acceptable for uptime monitoring purposes.
+let botReady = false;
+let botTag = null;
+const startedAt = new Date().toISOString();
+
+// ── Disconnect watchdog (per-shard) ──────────────────────────────────────────
+// If a shard does not reconnect within this window, exit so Railway restarts it.
+// Uses a Map keyed by shardId to handle multi-shard bots correctly.
+const RECONNECT_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+const shardWatchdogs = new Map();
+
+function startReconnectWatchdog(shardId) {
+  clearReconnectWatchdog(shardId);
+  const timer = setTimeout(async () => {
+    shardWatchdogs.delete(shardId);
+    console.error(`💀 Shard ${shardId} no reconectó en ${RECONNECT_TIMEOUT_MS / 1000}s — saliendo para forzar reinicio.`);
+    await sendWebhookAlert(`💀 **Bot sin reconectar** — \`${botTag ?? "discord-bot"}\` (shard ${shardId}) no reconectó en ${RECONNECT_TIMEOUT_MS / 1000}s. Forzando reinicio vía Railway ON_FAILURE.`);
+    process.exit(1);
+  }, RECONNECT_TIMEOUT_MS);
+  shardWatchdogs.set(shardId, timer);
+}
+
+function clearReconnectWatchdog(shardId) {
+  const timer = shardWatchdogs.get(shardId);
+  if (timer) {
+    clearTimeout(timer);
+    shardWatchdogs.delete(shardId);
+  }
+}
+
+// ── Discord webhook alerting ──────────────────────────────────────────────────
+const ALERT_WEBHOOK_URL = process.env.DISCORD_ALERT_WEBHOOK_URL;
+
+async function sendWebhookAlert(content) {
+  if (!ALERT_WEBHOOK_URL) return;
+  try {
+    await fetch(ALERT_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+  } catch (err) {
+    console.error("⚠️ Error enviando alerta webhook:", err.message);
+  }
+}
+
+// ── Health check server (required by Railway & external monitors) ─────────────
 const PORT = process.env.PORT || 3000;
 createServer((_, res) => {
-  res.writeHead(200);
-  res.end("OK — Bot activo ✅");
+  if (botReady) {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", bot: botTag, startedAt }));
+  } else {
+    res.writeHead(503, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "unavailable", startedAt }));
+  }
 }).listen(PORT, () => {
   console.log(`🌐 Health server en puerto ${PORT}`);
 });
@@ -39,11 +94,107 @@ const client = new Client({
   ],
 });
 
-client.once("clientReady", () => {
-  console.log(`✅ Bot conectado como: ${client.user?.tag}`);
+client.once("clientReady", async () => {
+  botReady = true;
+  botTag = client.user?.tag;
+  console.log(`✅ Bot conectado como: ${botTag}`);
   const permissions = 1376537029632n;
   const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${client.user?.id}&permissions=${permissions}&scope=bot`;
   console.log(`\n🔗 Link de invitación:\n${inviteUrl}\n`);
+  await sendWebhookAlert(`✅ **Bot online** — \`${botTag}\` está activo y conectado a Discord.`);
+});
+
+// discord.js v14 uses shard-level events for gateway disconnect/reconnect
+client.on("shardDisconnect", async (event, shardId) => {
+  botReady = false;
+  console.warn(`⚠️ Shard ${shardId} desconectado (code ${event.code}).`);
+  await sendWebhookAlert(`⚠️ **Bot desconectado** — \`${botTag ?? "discord-bot"}\` (shard ${shardId}, code ${event.code}). Watchdog activo: forzará reinicio en ${RECONNECT_TIMEOUT_MS / 1000}s si no reconecta.`);
+  startReconnectWatchdog(shardId);
+});
+
+client.on("shardReconnecting", (shardId) => {
+  botReady = false;
+  console.log(`🔄 Shard ${shardId} reconectando...`);
+  // Keep watchdog running — cleared on shardReady or shardResume
+});
+
+// shardReady fires on initial connect AND on fresh-session reconnects (e.g. invalid session)
+client.on("shardReady", async (shardId) => {
+  clearReconnectWatchdog(shardId);
+  const wasOffline = !botReady;
+  botReady = true;
+  console.log(`✅ Shard ${shardId} listo.`);
+  if (wasOffline) {
+    await sendWebhookAlert(`✅ **Bot reconectado** — \`${botTag ?? "discord-bot"}\` (shard ${shardId}) está de nuevo online (nueva sesión).`);
+  }
+});
+
+// shardResume fires when an existing gateway session is successfully resumed
+client.on("shardResume", async (shardId, replayedEvents) => {
+  clearReconnectWatchdog(shardId);
+  botReady = true;
+  console.log(`✅ Shard ${shardId} resumido (${replayedEvents} eventos reproducidos).`);
+  await sendWebhookAlert(`✅ **Bot reconectado** — \`${botTag ?? "discord-bot"}\` (shard ${shardId}) resumió sesión existente.`);
+});
+
+client.on("shardError", async (error, shardId) => {
+  console.error(`❌ Shard ${shardId} error:`, error.message);
+  await sendWebhookAlert(`❌ **Shard error** — \`${botTag ?? "discord-bot"}\` (shard ${shardId}): ${error.message}`);
+});
+
+// ── Graceful shutdown with alert ──────────────────────────────────────────────
+async function shutdown(signal) {
+  console.log(`🛑 ${signal} recibido, apagando...`);
+  botReady = false;
+  await sendWebhookAlert(`🛑 **Bot apagándose** — \`${botTag ?? "discord-bot"}\` recibió señal \`${signal}\`. Railway reiniciará si es un fallo.`);
+  client.destroy();
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT",  () => shutdown("SIGINT"));
+
+process.on("uncaughtException", async (err) => {
+  console.error("💥 uncaughtException:", err);
+  await sendWebhookAlert(`💥 **Error crítico** — \`${botTag ?? "discord-bot"}\` crasheó con: \`${err.message}\`. Railway reiniciará automáticamente.`);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", async (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  console.error("💥 unhandledRejection:", msg);
+  await sendWebhookAlert(`💥 **Promesa rechazada fatal** — \`${botTag ?? "discord-bot"}\`: \`${msg}\`. Railway reiniciará automáticamente.`);
+  process.exit(1);
+});
+
+const WELCOME_CHANNEL_NAME = "ᴀɪʀᴘᴏʀᴛ-✈️";
+const WELCOME_IMAGE_URL =
+  "https://raw.githubusercontent.com/RichDev01s/discord-roblox-bot/main/railway-deploy/assets/welcome-bg.jpg";
+
+client.on("guildMemberAdd", async (member) => {
+  const channel = member.guild.channels.cache.find(
+    (ch) => ch.name === WELCOME_CHANNEL_NAME && ch.isTextBased()
+  );
+
+  if (!channel) return;
+
+  const memberCount = member.guild.memberCount;
+  const reglasChannel = member.guild.channels.cache.find((ch) =>
+    ch.name.includes("reglas")
+  );
+  const reglasText = reglasChannel ? `<#${reglasChannel.id}>` : "**#reglas**";
+
+  const embed = new EmbedBuilder()
+    .setDescription(
+      `¡Qué bueno que llegaste! 🎉\n\n🔗 Ya somos **${memberCount}**, y ahora eres parte.\n📖 Recuerda leer ${reglasText}.\n🚀 Ponte cómodo, explora y hazte notar.\n¡Esto se pone mejor contigo aquí!`
+    )
+    .setColor(0x2ecc71)
+    .setImage(WELCOME_IMAGE_URL);
+
+  await channel.send({
+    content: `¡<@${member.id}> se ha unido a ✨ SkyLine | SAB, SAILOR PIECE & BLOX FRUITS!`,
+    embeds: [embed],
+  });
 });
 
 client.on("messageCreate", async (message) => {

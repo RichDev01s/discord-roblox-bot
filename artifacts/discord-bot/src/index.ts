@@ -38,12 +38,42 @@ const client = new Client({
   ],
 });
 
+const WELCOME_CHANNEL_NAME = "ᴀɪʀᴘᴏʀᴛ-✈️";
+const WELCOME_IMAGE_URL =
+  "https://raw.githubusercontent.com/RichDev01s/discord-roblox-bot/main/railway-deploy/assets/welcome-bg.jpg";
+
 client.once("clientReady", () => {
   console.log(`✅ Bot conectado como: ${client.user?.tag}`);
   // Permissions include MANAGE_MESSAGES (8192) for message deletion dedup
   const permissions = 1376537029632n;
   const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${client.user?.id}&permissions=${permissions}&scope=bot`;
   console.log(`\n🔗 Link de invitación:\n${inviteUrl}\n`);
+});
+
+client.on("guildMemberAdd", async (member) => {
+  const channel = member.guild.channels.cache.find(
+    (ch) => ch.name === WELCOME_CHANNEL_NAME && ch instanceof TextChannel
+  ) as TextChannel | undefined;
+
+  if (!channel) return;
+
+  const memberCount = member.guild.memberCount;
+  const reglasChannel = member.guild.channels.cache.find((ch) =>
+    ch.name.includes("reglas")
+  );
+  const reglasText = reglasChannel ? `<#${reglasChannel.id}>` : "**#reglas**";
+
+  const embed = new EmbedBuilder()
+    .setDescription(
+      `¡Qué bueno que llegaste! 🎉\n\n🔗 Ya somos **${memberCount}**, y ahora eres parte.\n📖 Recuerda leer ${reglasText}.\n🚀 Ponte cómodo, explora y hazte notar.\n¡Esto se pone mejor contigo aquí!`
+    )
+    .setColor(0x2ecc71 as ColorResolvable)
+    .setImage(WELCOME_IMAGE_URL);
+
+  await channel.send({
+    content: `¡<@${member.id}> se ha unido a ✨ SkyLine | SAB, SAILOR PIECE & BLOX FRUITS!`,
+    embeds: [embed],
+  });
 });
 
 client.on("messageCreate", async (message: Message) => {
@@ -234,7 +264,7 @@ async function handleGenServer(
         { name: "🎮 Juego", value: game.name, inline: false }
       )
       .setFooter({
-        text: `Pedido / Encontrado: 0 pedido → ${server.playing} encontrado`,
+        text: `By: Rich Scripts💸 | https://discord.gg/t2qmuRXEUn`,
       })
       .setTimestamp();
 

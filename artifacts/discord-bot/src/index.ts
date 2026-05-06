@@ -59,9 +59,9 @@ client.on("guildMemberAdd", async (member) => {
 
   const memberCount = member.guild.memberCount;
   const reglasChannel = member.guild.channels.cache.find((ch) =>
-    ch.name.includes("reglas")
+    ch.name === "ʀᴜʟᴇꜱ-🪧"
   );
-  const reglasText = reglasChannel ? `<#${reglasChannel.id}>` : "**#reglas**";
+  const reglasText = reglasChannel ? `<#${reglasChannel.id}>` : "**#ʀᴜʟᴇꜱ-🪧**";
 
   const embed = new EmbedBuilder()
     .setDescription(
@@ -71,7 +71,7 @@ client.on("guildMemberAdd", async (member) => {
     .setImage(WELCOME_IMAGE_URL);
 
   await channel.send({
-    content: `¡<@${member.id}> se ha unido a ✨ SkyLine | SAB, SAILOR PIECE & BLOX FRUITS!`,
+    content: `¡<@${member.id}> se ha unido a ✨ Rich Scripts💸!`,
     embeds: [embed],
   });
 });
